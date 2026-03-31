@@ -1,10 +1,10 @@
-from langchain_core.prompts import ChatPromptTemplate
+import os
+import json
 from langchain_openai import ChatOpenAI
-from langchain.agents import create_openai_tools_agent, AgentExecutor
+from langchain.agents import initialize_agent, Tool, AgentType
 from langchain.tools import tool
 from apps.transactions.models import Transaction
 from apps.users.models import User
-import os
 
 @tool
 def _save_transaction(user_phone: str, description: str, category: str, amount: float, transaction_type: str, is_paid: bool) -> str:
@@ -25,8 +25,20 @@ def _save_transaction(user_phone: str, description: str, category: str, amount: 
             type=transaction_type,
             is_paid=is_paid
         )
-        status_pagamento = "Pago/Recebido" if is_paid else "A Pagar/A Receber"
-        return f"Transação registrada com sucesso! ID: {t.transaction_code}. Categoria: {category}, Valor: R${amount:.2f}, Status: {status_pagamento}."
+        status_pagamento = "Pago" if is_paid else "A receber"
+        tipo_formatado = transaction_type.capitalize()
+        
+        return f"""✅ *{tipo_formatado} Registrada*
+
+🆔 ID: {t.transaction_code}
+💸 Tipo: {tipo_formatado}
+💰 Valor: R$ {amount:.2f}
+📄 Descrição: {description}
+🏷️ Categoria: {category}
+📅 Data: {t.created_at.strftime('%d/%m/%Y')}
+📌 Status: {status_pagamento}
+
+❌ Para excluir ou editar, envie: {t.transaction_code}"""
     except Exception as e:
         return f"Erro ao registrar: {str(e)}"
 
@@ -37,43 +49,37 @@ def run_register_agent(user_phone: str, user_message: str) -> str:
 
     llm = ChatOpenAI(model="gpt-4o-mini", temperature=0, api_key=api_key)
 
-    system_prompt = '''# AGENTE DE REGISTRO FINANCEIRO - LÍVIA 🦷
+    system_prompt = f"""# AGENTE DE REGISTRO FINANCEIRO - LÍVIA 🦷
 Você é o sub-agente especializado em CRIAR transações no banco de dados.
-
-## SUAS FERRAMENTAS:
-- Use _save_transaction para salvar os dados.
+Seu telefone de trabalho é {user_phone}.
 
 ## REGRAS DE NEGÓCIO:
 1. DESPESA: Sempre status Pago (is_paid=True).
 2. RECEITA "A RECEBER": Sempre registrar com is_paid=False.
 3. RECEITA "PAGA": Sempre registrar com is_paid=True.
-4. Se não souber se a RECEITA é paga ou a receber, pergunte: "Só para registrar certinho: essa receita de [valor] já foi recebida ou ainda está a receber?".
 
-## FORMATO DE RESPOSTA OBRIGATÓRIO APÓS SALVAR:
-✅ *[Tipo] Registrada*
+Use a ferramenta _save_transaction para salvar os dados no banco.
+Repasse o resultado da ferramenta EXATAMENTE como ela retornar, sem mudar nada.
+"""
 
-🆔 ID: [transaction_code]
-💸 Tipo: [Receita/Despesa]
-💰 Valor: R$ [valor]
-📄 Descrição: [descrição]
-🏷️ Categoria: [categoria]
-📅 Data: [data_atual]
-📌 Status: [Pago / A receber]
-
-❌ Para excluir ou editar, envie: [transaction_code]
-'''
-
-    prompt = ChatPromptTemplate.from_messages([
-        ("system", system_prompt),
-        ("human", "Telefone do usuário: {user_phone}\nMensagem: {input}")
-    ])
-
-    tools = [_save_transaction]
-    agent = create_openai_tools_agent(llm, tools, prompt)
-    agent_executor = AgentExecutor(agent=agent, tools=tools, verbose=True, handle_parsing_errors=True)
+    tools = [
+        Tool(
+            name="_save_transaction",
+            func=lambda x: _save_transaction(user_phone=user_phone, **json.loads(x)) if isinstance(x, str) else _save_transaction(user_phone=user_phone, **x),
+            description="Registra transação. Input deve ser um JSON dict com: description, category, amount, transaction_type ('receita' ou 'despesa'), is_paid (boolean)"
+        )
+    ]
+    
+    agent_executor = initialize_agent(
+        tools, 
+        llm, 
+        agent=AgentType.OPENAI_FUNCTIONS,
+        verbose=True,
+        agent_kwargs={{"system_message": system_prompt}}
+    )
 
     try:
-        response = agent_executor.invoke({"user_phone": user_phone, "input": user_message})
-        return response["output"]
+        response = agent_executor.run(user_message)
+        return response
     except Exception as e:
         return f"Desculpe, ocorreu um erro no registro: {str(e)}"
