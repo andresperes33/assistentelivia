@@ -10,6 +10,7 @@ SECRET_KEY = os.getenv('SECRET_KEY', 'django-insecure-default-key')
 DEBUG = True
 
 ALLOWED_HOSTS = ['*']
+CSRF_TRUSTED_ORIGINS = ['https://*.gegaid.easypanel.host', 'https://*.easypanel.host']
 
 INSTALLED_APPS = [
     'django.contrib.admin',
