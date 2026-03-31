@@ -28,6 +28,7 @@ def process_langchain_agent(user_id, raw_message, msg_type, payload):
 
     decision = router_agent(raw_message)
     target_agent = decision.get("agent")
+    response_text = "Desculpe, não consegui processar sua solicitação."
     
     # Roteamento real para o Sub-Agente LangChain criado
     if target_agent == "RegisterTransactionAgent":
@@ -41,8 +42,8 @@ def process_langchain_agent(user_id, raw_message, msg_type, payload):
     elif target_agent == "UpdateTransactionAgent":
         from agents.update_transaction_agent import run_update_agent
         response_text = run_update_agent(user.phone, raw_message)
-        
-        response_text = f"Entendi sua intenção como '{target_agent}', mas ainda não fui programada para realizar essa tarefa! (Integração pendente)"
+    else:
+        response_text = f"Entendi sua intenção como '{target_agent}', mas ainda não fui programada para realizar essa tarefa!"
     
     logger.info(f"IA Processada. Resposta: {response_text}")
     send_whatsapp_message(user.phone, response_text)
