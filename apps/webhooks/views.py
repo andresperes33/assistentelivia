@@ -71,13 +71,14 @@ class EvolutionWebhookView(APIView):
 
         if not user:
             logger.info(f"O número {phone} não está no banco. Enviando convite de assinatura.")
-            msg_convite = "Olá, eu sou a Livia 🦷! Ainda não te encontrei no meu sistema de dentistas parceiros.\n\nAssine agora mesmo para começar a automatizar seu financeiro: [SEU_LINK_AQUI]"
+            msg_convite = "Olá, eu sou a Livia 🦷! Ainda não te encontrei no meu sistema de dentistas parceiros.\n\n👉 Para começar, faça seu cadastro por aqui:\nhttps://pay.kirvano.com/e45b2cc2-243c-43b3-9071-6f8c226450df"
             send_whatsapp_message(phone, msg_convite)
             return Response(status=status.HTTP_200_OK)
         
         if not user.has_plan:
             logger.info(f"O número {phone} está no banco mas sem plano ativo.")
-            send_whatsapp_message(phone, "Seu acesso à Livia expirou ou está inativo. Renove seu plano aqui: [SEU_LINK_AQUI]")
+            msg_renovacao = "Seu acesso à Livia expirou ou está inativo. Para continuar automatizando seu financeiro, renove seu plano aqui:\nhttps://pay.kirvano.com/e45b2cc2-243c-43b3-9071-6f8c226450df"
+            send_whatsapp_message(phone, msg_renovacao)
             return Response(status=status.HTTP_200_OK)
 
         user.total_messages += 1
