@@ -12,7 +12,8 @@ def send_whatsapp_message(phone: str, text: str):
         logger.error("Evolution API URL ou Token não configurados.")
         return None
 
-    url = f"{instance_url}/message/sendText/livia_instance"
+    instance_name = os.getenv("EVOLUTION_INSTANCE_NAME", "livia-bot")
+    url = f"{instance_url}/message/sendText/{instance_name}"
     headers = {"apikey": api_token, "Content-Type": "application/json"}
     
     payload = {
