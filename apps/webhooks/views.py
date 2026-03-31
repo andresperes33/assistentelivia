@@ -6,6 +6,9 @@ from apps.users.models import User
 from apps.webhooks.models import WebhookEvent
 from services.evolution_service import send_whatsapp_message
 from apps.webhooks.tasks import process_langchain_agent
+import logging
+
+logger = logging.getLogger(__name__)
 
 class KirvanoWebhookView(APIView):
     def post(self, request):
@@ -57,12 +60,17 @@ class KirvanoWebhookView(APIView):
 class EvolutionWebhookView(APIView):
     def post(self, request):
         payload = request.data.get("data", {})
-        phone = payload.get("remoteJid", "").split("@")[0]
+        logger.info(f"Recebendo Webhook da Evolution: {request.data}")
+        
+        # O Jid pode vir em formatos diferentes dependendo da versão, tratamos aqui
+        remote_jid = payload.get("key", {}).get("remoteJid", "") or payload.get("remoteJid", "")
+        phone = remote_jid.split("@")[0]
         msg_type = payload.get("messageType")
         
         user = User.objects.filter(phone=phone).first()
 
         if not user:
+            logger.warning(f"Usuário não encontrado para o telefone: {phone}")
             send_whatsapp_message(phone, "Olá, eu sou a Livia. Você ainda não possui cadastro ativo. Faça sua assinatura aqui: [LINK_DO_PLANO]")
             return Response(status=status.HTTP_200_OK)
         
@@ -78,5 +86,6 @@ class EvolutionWebhookView(APIView):
             text_content = payload.get("message", {}).get("conversation") or payload.get("message", {}).get("extendedTextMessage", {}).get("text", "")
         
         process_langchain_agent.delay(user.id, text_content, msg_type, payload)
+        logger.info(f"Mensagem enfileirada para o Celery. Usuário: {user.phone}")
 
         return Response({"status": "queued"}, status=status.HTTP_200_OK)

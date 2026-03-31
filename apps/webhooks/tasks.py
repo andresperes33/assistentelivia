@@ -4,9 +4,13 @@ from services.evolution_service import send_whatsapp_message
 from services.openai_service import convert_audio_to_text, extract_text_from_image
 from apps.users.models import User
 import base64
+import logging
+
+logger = logging.getLogger(__name__)
 
 @shared_task
 def process_langchain_agent(user_id, raw_message, msg_type, payload):
+    logger.info(f"Iniciando Task Celery para UserID: {user_id}. Tipo: {msg_type}")
     user = User.objects.get(id=user_id)
     
     if msg_type == "audioMessage":
@@ -38,7 +42,7 @@ def process_langchain_agent(user_id, raw_message, msg_type, payload):
         from agents.update_transaction_agent import run_update_agent
         response_text = run_update_agent(user.phone, raw_message)
         
-    else:
         response_text = f"Entendi sua intenção como '{target_agent}', mas ainda não fui programada para realizar essa tarefa! (Integração pendente)"
     
+    logger.info(f"IA Processada. Resposta: {response_text}")
     send_whatsapp_message(user.phone, response_text)
