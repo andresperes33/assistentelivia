@@ -31,6 +31,8 @@ def send_whatsapp_message(phone: str, text: str):
     
     try:
         response = requests.post(url, json=payload, headers=headers)
+        if response.status_code not in [200, 201]:
+            logger.error(f"Erro na Evolution ({response.status_code}): {response.text}")
         response.raise_for_status()
         logger.info(f"Mensagem enviada com sucesso para {phone}.")
         return response.json()
