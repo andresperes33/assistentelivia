@@ -25,8 +25,8 @@ def send_whatsapp_message(phone: str, text: str):
     
     payload = {
         "number": clean_phone,
-        "options": {"delay": 1200, "presence": "composing"},
-        "textMessage": {"text": text}
+        "text": text,
+        "options": {"delay": 1200, "presence": "composing"}
     }
     
     try:
