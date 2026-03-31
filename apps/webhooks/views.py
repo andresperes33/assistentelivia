@@ -70,12 +70,14 @@ class EvolutionWebhookView(APIView):
         user = User.objects.filter(phone=phone).first()
 
         if not user:
-            logger.warning(f"Usuário não encontrado para o telefone: {phone}")
-            send_whatsapp_message(phone, "Olá, eu sou a Livia. Você ainda não possui cadastro ativo. Faça sua assinatura aqui: [LINK_DO_PLANO]")
+            logger.info(f"O número {phone} não está no banco. Enviando convite de assinatura.")
+            msg_convite = "Olá, eu sou a Livia 🦷! Ainda não te encontrei no meu sistema de dentistas parceiros.\n\nAssine agora mesmo para começar a automatizar seu financeiro: [SEU_LINK_AQUI]"
+            send_whatsapp_message(phone, msg_convite)
             return Response(status=status.HTTP_200_OK)
         
         if not user.has_plan:
-            send_whatsapp_message(phone, "Seu acesso não está ativo no momento. Renove seu plano aqui: [LINK_DO_PLANO]")
+            logger.info(f"O número {phone} está no banco mas sem plano ativo.")
+            send_whatsapp_message(phone, "Seu acesso à Livia expirou ou está inativo. Renove seu plano aqui: [SEU_LINK_AQUI]")
             return Response(status=status.HTTP_200_OK)
 
         user.total_messages += 1
