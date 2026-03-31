@@ -1,0 +1,9 @@
+Django==5.0.3
+djangorestframework
+celery
+redis
+langchain
+langchain-openai
+openai
+python-dotenv
+requests

@@ -1,0 +1,25 @@
+# Ambiente Virtual
+venv/
+.venv/
+env/
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
+
+# Bancos de dados locais
+*.sqlite3
+db.sqlite3
+
+# Arquivos de ambiente
+.env
+
+# Logs e outputs
+pip_output.txt
+*.log
+
+# Caches locais e pytest
+.pytest_cache/
+.coverage
+htmlcov/
