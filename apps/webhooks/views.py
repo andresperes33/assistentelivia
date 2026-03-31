@@ -67,7 +67,8 @@ class EvolutionWebhookView(APIView):
         phone = remote_jid.split("@")[0]
         msg_type = payload.get("messageType")
         
-        user = User.objects.filter(phone=phone).first()
+        # Busca flexível: pega os últimos 8 dígitos para evitar erro de DDD ou 9º dígito
+        user = User.objects.filter(phone__endswith=phone[-8:]).first() if len(phone) >= 8 else None
 
         if not user:
             logger.info(f"O número {phone} não está no banco. Enviando convite de assinatura.")
