@@ -13,11 +13,18 @@ def send_whatsapp_message(phone: str, text: str):
         return None
 
     instance_name = os.getenv("EVOLUTION_INSTANCE_NAME", "livia-bot")
-    url = f"{instance_url}/message/sendText/{instance_name}"
+    
+    # Limpa a URL para evitar barras duplas (ex: http://api.com//message)
+    base_url = instance_url.rstrip('/')
+    url = f"{base_url}/message/sendText/{instance_name}"
+    
     headers = {"apikey": api_token, "Content-Type": "application/json"}
     
+    # Limpa o telefone para garantir que seja apenas números
+    clean_phone = "".join(filter(str.isdigit, phone))
+    
     payload = {
-        "number": phone,
+        "number": clean_phone,
         "options": {"delay": 1200, "presence": "composing"},
         "textMessage": {"text": text}
     }
