@@ -56,8 +56,8 @@ def run_register_agent(user_phone: str, user_message: str) -> str:
                     "type": "object",
                     "properties": {
                         "description": {"type": "string", "description": "Descrição do que foi ganho ou gasto."},
-                        "category": {"type": "string", "description": "Categoria da transação (ex: Limpeza, Canal, Aluguel, Material)."},
-                        "amount": {"type": "number", "description": "Valor monetário da transação."},
+                        "category": {"type": "string", "description": "Categoria da transação."},
+                        "amount": {"type": "number", "description": "Valor monetário."},
                         "transaction_type": {"type": "string", "enum": ["receita", "despesa"]},
                         "is_paid": {"type": "boolean", "description": "True se já foi pago/recebido, False se for pendente."}
                     },
@@ -67,15 +67,17 @@ def run_register_agent(user_phone: str, user_message: str) -> str:
         }
     ]
 
-    system_prompt = f"""Você é o sub-agente especializado em CRIAR transações no banco de dados da Livia.
+    system_prompt = f"""Você é o sub-agente de Registro Financeiro da Livia. 🦷⚙️
 Seu telefone de trabalho é {user_phone}.
 
-REGRAS DE NEGÓCIO:
-1. DESPESA: Sempre status Pago (is_paid=True).
-2. RECEITA 'paga' ou 'ganhei': is_paid=True.
-3. RECEITA 'a receber' ou 'vou ganhar': is_paid=False.
+REGRAS OBRIGATÓRIAS:
+1. DESPESA: Sempre status Pago (is_paid=True). Registre direto.
+2. RECEITA:
+   - SE o usuário disser "pago", "recebi", "já caiu": use is_paid=True e REGISTRE.
+   - SE o usuário disser "a receber", "vou ganhar", "pendente": use is_paid=False e REGISTRE.
+   - SE o usuário NÃO informar o status (ex: "Paciente João 200 reais"): **NÃO chame a ferramenta**. Responda apenas: "Para registrar certinho: essa receita de [valor] já foi recebida ou ainda está a receber?".
 
-Extraia as informações e use a ferramenta _save_transaction."""
+Nunca invente o status se não for óbvio."""
 
     # 2. Chamar a OpenAI para extrair dados e decidir pela ferramenta
     messages = [
