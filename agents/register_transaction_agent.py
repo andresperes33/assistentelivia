@@ -2,7 +2,7 @@ import os
 import json
 from openai import OpenAI
 from apps.transactions.models import Transaction
-from apps.users.models import User
+from apps.users.models import User, UserContext
 from django.utils import timezone
 
 def _save_transaction(user_phone: str, description: str, category: str, amount: float, transaction_type: str, is_paid: bool) -> str:
@@ -24,6 +24,9 @@ def _save_transaction(user_phone: str, description: str, category: str, amount: 
         tipo_formatado = transaction_type.capitalize()
         data_atual = timezone.now().strftime('%d/%m/%Y')
         
+        # Limpar o contexto após salvar com sucesso
+        UserContext.objects.filter(user=user).delete()
+        
         return f"""✅ *{tipo_formatado} Registrada*
 
 🆔 ID: {t.transaction_code}
@@ -43,7 +46,12 @@ def run_register_agent(user_phone: str, user_message: str) -> str:
     if not api_key:
         return "Erro: OPENAI_API_KEY não configurada."
 
+    user = User.objects.filter(phone=user_phone).first()
     client = OpenAI(api_key=api_key)
+    
+    # Se chegamos aqui e o usuário respondeu algo como "pago" ou "a receber",
+    # precisamos recuperar o que ele tentou registrar antes.
+    context, _ = UserContext.objects.get_or_create(user=user)
     
     # 1. Definir a ferramenta de registro
     tools = [
@@ -73,13 +81,12 @@ Seu telefone de trabalho é {user_phone}.
 REGRAS OBRIGATÓRIAS:
 1. DESPESA: Sempre status Pago (is_paid=True). Registre direto.
 2. RECEITA:
-   - SE o usuário disser "pago", "recebi", "já caiu": use is_paid=True e REGISTRE.
+   - SE o usuário disser "pago", "recebi", "já caiu", "confirmado": use is_paid=True e REGISTRE.
    - SE o usuário disser "a receber", "vou ganhar", "pendente": use is_paid=False e REGISTRE.
-   - SE o usuário NÃO informar o status (ex: "Paciente João 200 reais"): **NÃO chame a ferramenta**. Responda apenas: "Para registrar certinho: essa receita de [valor] já foi recebida ou ainda está a receber?".
+   - SE você ainda não souber o status, NÃO chame a ferramenta.
 
-Nunca invente o status se não for óbvio."""
+CONTEXTO PENDENTE: {context.pending_data if context.pending_data else "Nenhum"}"""
 
-    # 2. Chamar a OpenAI para extrair dados e decidir pela ferramenta
     messages = [
         {"role": "system", "content": system_prompt},
         {"role": "user", "content": user_message}
@@ -99,7 +106,6 @@ Nunca invente o status se não for óbvio."""
         for tool_call in tool_calls:
             if tool_call.function.name == "_save_transaction":
                 args = json.loads(tool_call.function.arguments)
-                # Chama a função real do Django
                 return _save_transaction(
                     user_phone=user_phone,
                     description=args.get("description"),
@@ -109,4 +115,17 @@ Nunca invente o status se não for óbvio."""
                     is_paid=args.get("is_paid")
                 )
     
-    return response_message.content or "Desculpe, não consegui entender o registro."
+    # Se ele não chamou a ferramenta, vamos tentar salvar o contexto do que ele tentou fazer
+    # Usamos uma chamada extra rápida para extrair os dados básicos se eles ainda não estiverem no contexto
+    if not context.pending_data:
+        extraction_prompt = "Extraia o valor, descrição, categoria e tipo (receita/despesa) desta mensagem em JSON: " + user_message
+        extract_res = client.chat.completions.create(
+            model="gpt-4o-mini",
+            messages=[{"role": "user", "content": extraction_prompt}],
+            response_format={"type": "json_object"}
+        )
+        context.pending_data = json.loads(extract_res.choices[0].message.content)
+        context.last_action = "AWAITING_PAYMENT_STATUS"
+        context.save()
+
+    return response_message.content or "Para registrar certinho: essa receita já foi recebida ou ainda está a receber?"

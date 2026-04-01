@@ -24,5 +24,12 @@ class User(models.Model):
     next_payment_date = models.DateTimeField(null=True, blank=True)
     welcome_message_sent = models.BooleanField(default=False)
 
+
+class UserContext(models.Model):
+    user = models.OneToOneField(User, on_delete=models.CASCADE, related_name='context')
+    last_action = models.CharField(max_length=100, null=True, blank=True)
+    pending_data = models.JSONField(null=True, blank=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
     def __str__(self):
-        return f"{self.name} - {self.phone}"
+        return f"Context for {self.user.name}"

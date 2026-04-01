@@ -28,6 +28,12 @@ def process_langchain_agent(user_id, raw_message, msg_type, payload):
 
     decision = router_agent(raw_message)
     target_agent = decision.get("agent")
+    
+    # Se o usuário tem uma pergunta pendente no Agente de Registro, forçamos o destino
+    from apps.users.models import UserContext
+    if UserContext.objects.filter(user=user, last_action="AWAITING_PAYMENT_STATUS").exists():
+        target_agent = "RegisterTransactionAgent"
+    
     response_text = "Desculpe, não consegui processar sua solicitação."
     
     # Roteamento real para o Sub-Agente LangChain criado
