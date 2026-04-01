@@ -4,6 +4,7 @@ from openai import OpenAI
 from apps.transactions.models import Transaction
 from apps.users.models import User, UserContext
 from django.utils import timezone
+import pytz
 
 def _save_transaction(user_phone: str, description: str, category: str, amount: float, transaction_type: str, is_paid: bool) -> str:
     """Ferramenta para registrar a transação no banco de dados."""
@@ -22,7 +23,10 @@ def _save_transaction(user_phone: str, description: str, category: str, amount: 
         )
         status_pagamento = "Pago" if is_paid else "A receber"
         tipo_formatado = transaction_type.capitalize()
-        data_atual = timezone.now().strftime('%d/%m/%Y')
+        
+        # Forçar fuso horário de São Paulo para o ticket
+        tz = pytz.timezone('America/Sao_Paulo')
+        data_br = timezone.now().astimezone(tz).strftime('%d/%m/%Y')
         
         # Limpar o contexto após salvar com sucesso
         UserContext.objects.filter(user=user).delete()
@@ -34,7 +38,7 @@ def _save_transaction(user_phone: str, description: str, category: str, amount: 
 💰 Valor: R$ {amount:.2f}
 📄 Descrição: {description}
 🏷️ Categoria: {category}
-📅 Data: {data_atual}
+📅 Data: {data_br}
 📌 Status: {status_pagamento}
 
 ❌ Para excluir ou editar, envie: {t.transaction_code}"""
@@ -48,9 +52,6 @@ def run_register_agent(user_phone: str, user_message: str) -> str:
 
     user = User.objects.filter(phone=user_phone).first()
     client = OpenAI(api_key=api_key)
-    
-    # Se chegamos aqui e o usuário respondeu algo como "pago" ou "a receber",
-    # precisamos recuperar o que ele tentou registrar antes.
     context, _ = UserContext.objects.get_or_create(user=user)
     
     # 1. Definir a ferramenta de registro
@@ -64,10 +65,10 @@ def run_register_agent(user_phone: str, user_message: str) -> str:
                     "type": "object",
                     "properties": {
                         "description": {"type": "string", "description": "Descrição do que foi ganho ou gasto."},
-                        "category": {"type": "string", "description": "Categoria da transação."},
+                        "category": {"type": "string", "description": "Categoria específica (Ex: Clínica Moreira, Paciente João, Aluguel)."},
                         "amount": {"type": "number", "description": "Valor monetário."},
                         "transaction_type": {"type": "string", "enum": ["receita", "despesa"]},
-                        "is_paid": {"type": "boolean", "description": "True se já foi pago/recebido, False se for pendente."}
+                        "is_paid": {"type": "boolean", "description": "Status de pagamento."}
                     },
                     "required": ["description", "category", "amount", "transaction_type", "is_paid"]
                 }
@@ -79,11 +80,13 @@ def run_register_agent(user_phone: str, user_message: str) -> str:
 Seu telefone de trabalho é {user_phone}.
 
 REGRAS OBRIGATÓRIAS:
-1. DESPESA: Sempre status Pago (is_paid=True). Registre direto.
+1. DESPESA: Sempre status Pago (is_paid=True).
 2. RECEITA:
-   - SE o usuário disser "pago", "recebi", "já caiu", "confirmado": use is_paid=True e REGISTRE.
-   - SE o usuário disser "a receber", "vou ganhar", "pendente": use is_paid=False e REGISTRE.
-   - SE você ainda não souber o status, NÃO chame a ferramenta.
+   - SE o usuário disser "pago", "recebi", "já caiu", "confirmado", "pix": is_paid=True.
+   - SE disser "a receber", "pendente", "vou ganhar": is_paid=False.
+   - SE NÃO SOUBER, NÃO REGISTRE. Responda: "Para registrar certinho: essa receita de [valor] já foi recebida ou ainda está a receber?".
+
+3. CATEGORIA: EXTRAIA O NOME DA CLÍNICA OU DO PACIENTE SE DISPONÍVEL. Nunca use as palavras genéricas 'receita' ou 'despesa' como categoria.
 
 CONTEXTO PENDENTE: {context.pending_data if context.pending_data else "Nenhum"}"""
 
@@ -108,24 +111,24 @@ CONTEXTO PENDENTE: {context.pending_data if context.pending_data else "Nenhum"}"
                 args = json.loads(tool_call.function.arguments)
                 return _save_transaction(
                     user_phone=user_phone,
-                    description=args.get("description"),
-                    category=args.get("category"),
-                    amount=args.get("amount"),
-                    transaction_type=args.get("transaction_type"),
-                    is_paid=args.get("is_paid")
+                    **args
                 )
     
-    # Se ele não chamou a ferramenta, vamos tentar salvar o contexto do que ele tentou fazer
-    # Usamos uma chamada extra rápida para extrair os dados básicos se eles ainda não estiverem no contexto
+    # Se não chamou a ferramenta e não temos contexto, salvamos para a próxima mensagem
     if not context.pending_data:
-        extraction_prompt = "Extraia o valor, descrição, categoria e tipo (receita/despesa) desta mensagem em JSON: " + user_message
+        extraction_prompt = "Extraia valor, descrição, categoria (NOME DA CLÍNICA ou PACIENTE) e tipo (receita/despesa) em JSON: " + user_message
         extract_res = client.chat.completions.create(
             model="gpt-4o-mini",
             messages=[{"role": "user", "content": extraction_prompt}],
             response_format={"type": "json_object"}
         )
-        context.pending_data = json.loads(extract_res.choices[0].message.content)
+        extracted = json.loads(extract_res.choices[0].message.content)
+        # Limpeza de categoria genérica
+        if extracted.get("category", "").lower() in ["receita", "despesa"]:
+            extracted["category"] = "Geral"
+            
+        context.pending_data = extracted
         context.last_action = "AWAITING_PAYMENT_STATUS"
         context.save()
 
-    return response_message.content or "Para registrar certinho: essa receita já foi recebida ou ainda está a receber?"
+    return response_message.content or "Preciso confirmar: essa receita já foi recebida?"
